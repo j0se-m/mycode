@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Form</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body style="background-color: #f8f9fa;">
+
+<div class="container mt-5 padding-bottom: 20px;">
+    
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <div class="card bg-white p-4 rounded">
+
+        <form >
+          <div class="form-group">
+            <label for="eventTitle" class="font-weight-bold">Event Title</label>
+            <input type="text" class="form-control" id="eventTitle" placeholder="Enter event title">
+          </div>
+          <div class="form-group">
+            <label for="eventDescription" class="font-weight-bold">Event Description</label>
+            <textarea class="form-control" id="eventDescription" rows="3" placeholder="Enter event description"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="eventDate" class="font-weight-bold">Date</label>
+            <input type="date" class="form-control" id="eventDate">
+          </div>
+          <div class="form-group">
+            <label for="eventLocation" class="font-weight-bold">Event Location</label>
+            <input type="text" class="form-control" id="eventLocation" placeholder="Enter event location">
+          </div>
+          <div class="form-group">
+            <label for="eventFile" class="font-weight-bold">Event File</label>
+            <input type="file" class="form-control-file" id="eventFile">
+          </div>
+          <button type="submit" class="btn btn-primary">Submit</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
