@@ -1,43 +1,25 @@
 <?php
-require 'config.php';
-session_start();
+require('config.php');
 
-if (!isset($_SESSION['usertype']) || $_SESSION['usertype'] !== 'admin') {
-    header("Location: pending.php");
-    exit();
-}
+if(isset($_GET['id'])) {
+    $event_id = $_GET['id'];
+    $sql = "UPDATE events SET approved = 1 WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $event_id);
+    
+    if ($stmt->execute()) {
+        // Event disapproved successfully
+        header("Location: admin-readmore.php?id=" . $event_id);
 
-if (!isset($_GET['id'])) {
-    echo "No event ID provided.";
-    exit();
-}
-
-$event_id = intval($_GET['id']);
-
-$conn = new mysqli(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME);
-
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
-
-$sql = "UPDATE events SET approved = 1 WHERE id = ?";
-$stmt = $conn->prepare($sql);
-
-if ($stmt === false) {
-    die("Prepare failed: " . $conn->error);
-}
-
-$stmt->bind_param("i", $event_id);
-
-if ($stmt->execute()) {
-    $_SESSION['toast_message'] = "Event approved successfully.";
+        exit();
+    } else {
+        // Error occurred
+        echo "Error: " . $conn->error;
+    }
 } else {
-    $_SESSION['toast_message'] = "Error approving event: " . $stmt->error;
+    // Invalid request
+    echo "Invalid request";
 }
 
-$stmt->close();
 $conn->close();
-
-header("Location: pending.php");
-exit();
 ?>

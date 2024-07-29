@@ -1,5 +1,4 @@
 <?php
-require('config.php');
 include 'headerr.php';
 
 if(isset($_GET['id'])) {
@@ -12,6 +11,16 @@ if(isset($_GET['id'])) {
         $row = $result->fetch_assoc();
 
 ?>
+<style>
+       .content {
+            padding: 20px;
+            margin-top: 6px; /* Adjusting for navbar height */
+            margin-left: 180px; /* Adjusting for sidebar width */
+        }
+</style>
+
+<div class="content">
+
         <div class="container mt-4 mb-4">
             <div class="card">
                 <div class="card-body p-4">
@@ -61,6 +70,8 @@ if(isset($_GET['id'])) {
                 </div>
             </div>
         </div>
+            
+</div>
         <script>
             function updateFileName(input) {
                 var label = input.nextElementSibling;
@@ -80,5 +91,4 @@ if(isset($_GET['id'])) {
 }
 
 $conn->close();
-include 'footer.php';
 ?>

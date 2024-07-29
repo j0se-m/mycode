@@ -24,7 +24,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         if ($stmt->execute()) {
-            header("Location: pending.php");
+            // Redirect to the event details page with the updated event ID
+            header("Location: admin-readmore.php?id=" . $event_id);
             exit();
         } else {
             echo "Error updating event: " . $stmt->error;

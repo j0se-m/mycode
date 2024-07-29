@@ -1,5 +1,4 @@
 <?php
-require('config.php');
 include 'headerr.php';
 $id = $_GET["id"];
 
@@ -10,9 +9,43 @@ if (isset($_POST["submit"])) {
     $gender = $_POST['gender'];
     $username = $_POST['username'];
     $usertype = $_POST['usertype']; 
-    
+    $profilePicture = '';
 
-    $sql = "UPDATE `crud` SET `first_name`='$first_name', `last_name`='$last_name', `email`='$email', `gender`='$gender', `username`='$username', `usertype`='$usertype' WHERE id = $id"; // Updated SQL query
+    // Handle profile picture upload
+    if (isset($_FILES['profilePicture']) && $_FILES['profilePicture']['error'] == 0) {
+        $target_dir = "uploads/";
+        $target_file = $target_dir . basename($_FILES["profilePicture"]["name"]);
+        $imageFileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
+        
+        // Check if image file is a actual image or fake image
+        $check = getimagesize($_FILES["profilePicture"]["tmp_name"]);
+        if($check !== false) {
+            // Allow certain file formats
+            if($imageFileType == "jpg" || $imageFileType == "png" || $imageFileType == "jpeg" || $imageFileType == "gif" ) {
+                // Check if file already exists
+                if (!file_exists($target_file)) {
+                    if (move_uploaded_file($_FILES["profilePicture"]["tmp_name"], $target_file)) {
+                        $profilePicture = $target_file;
+                    } else {
+                        echo "Sorry, there was an error uploading your file.";
+                    }
+                } else {
+                    echo "Sorry, file already exists.";
+                }
+            } else {
+                echo "Sorry, only JPG, JPEG, PNG & GIF files are allowed.";
+            }
+        } else {
+            echo "File is not an image.";
+        }
+    }
+
+    // Update user information in the database
+    if ($profilePicture) {
+        $sql = "UPDATE crud SET first_name='$first_name', last_name='$last_name', email='$email', gender='$gender', username='$username', usertype='$usertype', profile_picture='$profilePicture' WHERE id = $id";
+    } else {
+        $sql = "UPDATE crud SET first_name='$first_name', last_name='$last_name', email='$email', gender='$gender', username='$username', usertype='$usertype' WHERE id = $id";
+    }
 
     $result = mysqli_query($conn, $sql);
 
@@ -24,7 +57,11 @@ if (isset($_POST["submit"])) {
     }
 }
 
+$sql = "SELECT * FROM crud WHERE id = $id LIMIT 1";
+$result = mysqli_query($conn, $sql);
+$row = mysqli_fetch_assoc($result);
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -38,8 +75,9 @@ if (isset($_POST["submit"])) {
 
     <style>
         .card-container {
+            margin-top: 60px;;
             max-width: 80%;
-            margin: 50px auto;
+            margin-left:220px;
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
@@ -71,17 +109,10 @@ if (isset($_POST["submit"])) {
             <h3 class="text-center">Edit User Information</h3>
         </div>
         <div class="card-body">
-            <?php
-            $sql = "SELECT * FROM `crud` WHERE id = $id LIMIT 1";
-            $result = mysqli_query($conn, $sql);
-            $row = mysqli_fetch_assoc($result);
-            ?>
-
-            <form action="" method="post">
+            <form action="" method="post" enctype="multipart/form-data">
                 <div class="mb-3">
                     <label class="form-label">Username:</label>
-                    <input type="text" class="form-control" name="username"
-                        value="<?php echo $row['username'] ?>">
+                    <input type="text" class="form-control" name="username" value="<?php echo $row['username']; ?>">
                 </div>
 
                 <div class="mb-3">
@@ -93,39 +124,33 @@ if (isset($_POST["submit"])) {
                 </div>
 
                 <div class="mb-3">
+                    <label class="form-label">Upload Profile Picture:</label>
+                    <input type="file" class="form-control" name="profilePicture" id="profilePicture">
+                </div>
+
+                <div class="mb-3">
                     <label class="form-label">First Name:</label>
-                    <input type="text" class="form-control" name="first_name"
-                        value="<?php echo $row['first_name'] ?>">
+                    <input type="text" class="form-control" name="first_name" value="<?php echo $row['first_name']; ?>">
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label">Last Name:</label>
-                    <input type="text" class="form-control" name="last_name"
-                        value="<?php echo $row['last_name'] ?>">
+                    <input type="text" class="form-control" name="last_name" value="<?php echo $row['last_name']; ?>">
                 </div>
-
-                <!-- <div class="mb-3">
-                    <label class="form-label">Password:</label>
-                    <input type="password" class="form-control" name="password"
-                        value="
-                   /* <?php echo $row['password'] ?>*
-                </div> -->
 
                 <div class="mb-3">
                     <label class="form-label">Email:</label>
-                    <input type="email" class="form-control" name="email" value="<?php echo $row['email'] ?>">
+                    <input type="email" class="form-control" name="email" value="<?php echo $row['email']; ?>">
                 </div>
 
                 <div class="form-group mb-3">
                     <label class="form-label">Gender:</label>
                     <div>
-                        <input type="radio" class="form-check-input" name="gender" id="male" value="male"
-                            <?php echo ($row["gender"] == 'male') ? "checked" : ""; ?>>
+                        <input type="radio" class="form-check-input" name="gender" id="male" value="male" <?php echo ($row["gender"] == 'male') ? "checked" : ""; ?>>
                         <label for="male" class="form-input-label">Male</label>
                     </div>
                     <div>
-                        <input type="radio" class="form-check-input" name="gender" id="female" value="female"
-                            <?php echo ($row["gender"] == 'female') ? "checked" : ""; ?>>
+                        <input type="radio" class="form-check-input" name="gender" id="female" value="female" <?php echo ($row["gender"] == 'female') ? "checked" : ""; ?>>
                         <label for="female" class="form-input-label">Female</label>
                     </div>
                 </div>

@@ -1,6 +1,5 @@
 <?php
 include 'user-nav.php';
-// include 'config.php';
 
 // Redirect to login page if user is not logged in
 if (!isset($_SESSION['username'])) {
@@ -13,71 +12,96 @@ $mysqli = $conn;
 
 // Fetch user details
 $username = $_SESSION['username'];
-$user_query = $mysqli->prepare("SELECT id, email, first_name, last_name FROM crud WHERE username = ?");
+$user_query = $mysqli->prepare("SELECT id, email, first_name, last_name, profile_picture FROM crud WHERE username = ?");
 $user_query->bind_param('s', $username);
 $user_query->execute();
 $user_result = $user_query->get_result();
 $user = $user_result->fetch_assoc();
 
-// Fetch user events
-$event_query = $mysqli->prepare("SELECT id, name, image, description, created_at, approved FROM events WHERE user_id = ?");
-$event_query->bind_param('i', $user['id']);
-$event_query->execute();
-$event_result = $event_query->get_result();
-
-// Initialize $events array
-$events = [];
-if ($event_result !== false) {
-    while ($event = $event_result->fetch_assoc()) {
-        $events[] = $event;
-    }
-}
-
 // Handle profile picture upload
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] === UPLOAD_ERR_OK) {
-        $file_tmp_path = $_FILES['profile_picture']['tmp_name'];
-        $file_name = basename($_FILES['profile_picture']['name']);
-        $file_path = 'uploads/' . $file_name;
+$message = ''; // Variable to store success or error messages
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES["profile_picture"])) {
+    $target_dir = "uploads/"; // Directory to save the uploaded file
+    $file_extension = strtolower(pathinfo($_FILES["profile_picture"]["name"], PATHINFO_EXTENSION));
+    $timestamp = time(); // Current timestamp
+    $new_filename = $timestamp . '.' . $file_extension; // New file name with timestamp
+    $target_file = $target_dir . $new_filename;
+    $uploadOk = 1;
+    $error = '';
 
-        if (move_uploaded_file($file_tmp_path, $file_path)) {
-            // Update profile picture path in the database
-            $update_query = $mysqli->prepare("UPDATE crud SET profile_picture = ? WHERE id = ?");
-            $update_query->bind_param('si', $file_path, $user['id']);
-            $update_query->execute();
+    // Check if image file is a valid image
+    $check = getimagesize($_FILES["profile_picture"]["tmp_name"]);
+    if ($check === false) {
+        $error = "File is not an image.";
+        $uploadOk = 0;
+    }
 
-            // Refresh the page to reflect the new profile picture
-            header("location: user-profile.php");
-            exit();
+    // Check file size
+    if ($_FILES["profile_picture"]["size"] > 500000) { // Limit to 500KB
+        $error = "Sorry, your file is too large.";
+        $uploadOk = 0;
+    }
+
+    // Allow certain file formats
+    if (!in_array($file_extension, ["jpg", "jpeg", "png", "gif"])) {
+        $error = "Sorry, only JPG, JPEG, PNG & GIF files are allowed.";
+        $uploadOk = 0;
+    }
+
+    // Check if $uploadOk is set to 0 by an error
+    if ($uploadOk == 0) {
+        $message = "<div class='alert alert-danger'>Upload failed. Error: $error</div>";
+    } else {
+        // Try to upload file
+        if (move_uploaded_file($_FILES["profile_picture"]["tmp_name"], $target_file)) {
+            // Update profile picture in database
+            $update_query = $mysqli->prepare("UPDATE crud SET profile_picture = ? WHERE username = ?");
+            $update_query->bind_param('ss', $target_file, $username);
+            if ($update_query->execute()) {
+                $message = "<div class='alert alert-success'>Profile picture updated successfully.</div>";
+                // Refresh user data to reflect changes
+                $user['profile_picture'] = $target_file;
+            } else {
+                $message = "<div class='alert alert-danger'>Error updating profile picture in database.</div>";
+            }
+        } else {
+            $message = "<div class='alert alert-danger'>Sorry, there was an error uploading your file.</div>";
         }
-    } elseif (isset($_POST['remove_picture'])) {
-        // Remove profile picture
-        $remove_query = $mysqli->prepare("UPDATE crud SET profile_picture = NULL WHERE id = ?");
-        $remove_query->bind_param('i', $user['id']);
-        $remove_query->execute();
-
-        // Refresh the page to reflect the removal of the profile picture
-        header("location: user-profile.php");
-        exit();
     }
 }
 
-// Fetch invites for the user
-$invite_query = $mysqli->prepare("SELECT id, event_id FROM event_invites WHERE invited_user_id = ?");
-$invite_query->bind_param('i', $user['id']);
-$invite_query->execute();
-$invite_result = $invite_query->get_result();
-
-// Initialize $invites array
-$invites = [];
-if ($invite_result !== false) {
-    while ($invite = $invite_result->fetch_assoc()) {
-        $invites[] = $invite['event_id'];
-    }
+// Pagination setup
+$items_per_page = isset($_GET['items_per_page']) ? intval($_GET['items_per_page']) : 5;
+$custom_items_per_page = isset($_GET['custom_items_per_page']) ? intval($_GET['custom_items_per_page']) : 0;
+if ($custom_items_per_page > 0) {
+    $items_per_page = $custom_items_per_page;
 }
 
+// Fetch events related to the user
+$offset = (isset($_GET['page']) ? intval($_GET['page']) - 1 : 0) * $items_per_page;
+$events_query = $mysqli->prepare("SELECT id, name, date, description, location, status FROM events WHERE user_id = ? LIMIT ?, ?");
+$events_query->bind_param('iii', $user['id'], $offset, $items_per_page);
+$events_query->execute();
+$events_result = $events_query->get_result();
+$events = $events_result->fetch_all(MYSQLI_ASSOC);
+
+// Fetch total event count for pagination
+$count_query = $mysqli->prepare("SELECT COUNT(*) AS total FROM events WHERE user_id = ?");
+$count_query->bind_param('i', $user['id']);
+$count_query->execute();
+$count_result = $count_query->get_result();
+$total_events = $count_result->fetch_assoc()['total'];
+$total_pages = ceil($total_events / $items_per_page);
+
+// Function to truncate text to a specified number of words
+function truncateWords($text, $limit) {
+    $words = explode(' ', $text);
+    if (count($words) > $limit) {
+        return implode(' ', array_slice($words, 0, $limit)) . '...';
+    }
+    return $text;
+}
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -89,14 +113,17 @@ if ($invite_result !== false) {
         body {
             background-color: #f8f9fa;
         }
+        .container{
+            margin-top: 0;
+        }
         .profile-header {
             text-align: center;
             margin: 20px 0;
         }
         .profile-picture {
             border-radius: 50%;
-            width: 150px;
-            height: 150px;
+            width: 40px;
+            height: 40px;
             border: 5px solid #007bff;
         }
         .profile-details {
@@ -106,138 +133,144 @@ if ($invite_result !== false) {
             border-radius: 10px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
-        .card {
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        .card img {
-            width: 100%;
-            height: auto;
-            max-height: 200px;
-            object-fit: cover;
-        }
-        .card-body {
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .read-more {
-            cursor: pointer;
-            color: #007bff;
-        }
-        .read-more:hover {
-            text-decoration: underline;
-        }
-        .tab-content {
-            margin-top: 20px;
-        }
-        .nav-tabs .nav-link.active {
-            background-color: #007bff;
-            color: #ffffff !important;
-        }
-        .tab-content .card {
-            margin-bottom: 20px;
-        }
-        .invite-card {
-            background: #ffffff;
-            border-radius: 10px;
+        .main-content {
+            margin-left: 150px; /* Adjust based on your sidebar width */
             padding: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2px;
         }
-        .invite-card h5 {
-            margin-bottom: 10px;
+        .online-status {
+            font-weight: bold;
+            color: green;
+        }
+        .offline-status {
+            font-weight: bold;
+            color: red;
+        }
+        .fade {
+            animation: fadeOut 3s forwards;
+        }
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        .action-buttons a {
+            margin-right: 5px; /* Add some space between buttons */
+            color: #ffffff; /* Ensure text color is white */
+            text-decoration: none; /* Remove underline */
+        }
+        .action-buttons a.btn-info {
+            background-color: #17a2b8; /* Consistent color for view button */
+            border-color: #17a2b8;
+        }
+        .action-buttons a.btn-primary {
+            background-color: #007bff; /* Consistent color for invite button */
+            border-color: #007bff;
+        }
+        .action-buttons a.btn-info:hover,
+        .action-buttons a.btn-primary:hover {
+            opacity: 0.8; /* Slightly transparent on hover */
+        }
+        .event-link {
+            text-decoration: none;
+            color: #007bff; /* Link color */
+        }
+        .event-link:hover {
+            text-decoration: underline; /* Underline on hover */
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="row">
-            <div class="col-md-8">
-                <div class="profile-header">
-                    <img src="<?php echo htmlspecialchars($user['profile_picture'] ?? 'path_to_default_profile_picture.jpg'); ?>" alt="Profile Picture" class="profile-picture">
-                    <h1><?php echo htmlspecialchars($username); ?></h1>
+        <div class="main-content">
+            <?php if ($message): ?>
+                <div class="fade">
+                    <?php echo $message; ?>
                 </div>
-                <div class="profile-details">
-                    <p><strong>Email:</strong> <?php echo htmlspecialchars($user['email']); ?></p>
-                    <p><strong>First Name:</strong> <?php echo htmlspecialchars($user['first_name']); ?></p>
-                    <p><strong>Last Name:</strong> <?php echo htmlspecialchars($user['last_name']); ?></p>
-                </div>
-                <div class="row row-cols-1 row-cols-md-3 g-4">
-                    <?php foreach ($events as $event): ?>
-                        <?php
-                        $status = $event['approved'] == 1 ? '' : '(pending)';
-                        $image_url = !empty($event['image']) ? "uploads/" . htmlspecialchars($event['image']) : "path_to_placeholder_image.jpg";
-                        ?>
-                        <div class="col">
-                            <div class="card">
-                                <img src="<?php echo $image_url; ?>" alt="Event Image" class="card-img-top">
-                                <div class="card-body">
-                                    <h5 class="card-title"><?php echo htmlspecialchars($event['name']) . $status; ?></h5>
-                                    <?php
-                                    $description = htmlspecialchars($event['description']);
-                                    $words = explode(' ', $description);
-                                    $shortDescription = implode(' ', array_slice($words, 0, 20));
-                                    ?>
-                                    <p class="card-text">
-                                        <span class="short-description"><?php echo $shortDescription; ?>...</span>
-                                        <a href="user-event_details.php?id=<?php echo $event
-['id']; ?>" class="read-more">Read More</a>
-</p>
-</div>
-<div class="card-footer">
-<?php if ($event['approved'] == 1): ?>
-    <button class="btn btn-success btn-sm">Approved</button>
-<?php else: ?>
-    <a href="invite-users.php?event_id=<?php echo $event['id']; ?>" class="btn btn-primary btn-sm">Invite Users</a>
-<?php endif; ?>
-</div>
-</div>
-</div>
-<?php endforeach; ?>
-</div>
-</div>
-<div class="col-md-4">
-<ul class="nav nav-tabs" id="myTab" role="tablist">
-<li class="nav-item" role="presentation">
-<a class="nav-link active" id="invites-tab" href="invite-display.php" role="tab" aria-controls="invites" aria-selected="true">Invites</a>
-</li>
-</ul>
-<div class="tab-content" id="myTabContent">
-<div class="tab-pane fade show active" id="invites" role="tabpanel" aria-labelledby="invites-tab">
-<!-- Invites content goes here -->
-<div class="invite-card">
-<h5>Invites Received</h5>
-<?php
-if (!empty($invites)) {
-foreach ($invites as $inviteId) {
-$event_info_query = $mysqli->prepare("SELECT name FROM events WHERE id = ?");
-$event_info_query->bind_param('i', $inviteId);
-$event_info_query->execute();
-$event_info_result = $event_info_query->get_result();
-$event_info = $event_info_result->fetch_assoc();
-echo '<p>You have been invited to the event: ' . htmlspecialchars($event_info['name']) . '</p>';
-echo '<a href="accept_invite.php?invited_user_id=' . $inviteId . '" class="btn btn-success btn-sm">Accept</a>';
-echo ' ';
-echo '<a href="reject_invite.php?invited_user_id=' . $inviteId . '" class="btn btn-danger btn-sm">Reject</a>';
-}
-} else {
-echo '<p>No invites yet.</p>';
-}
-?>
-</div>
-</div>
-</div>
-</div>
-</div>
-
-</div>
-<?php
-// Check if there is a success message
-if (isset($_SESSION['success_message'])) {
-echo '<div class="alert alert-success">' . $_SESSION['success_message'] . '</div>';
-
-// Clear the success message to avoid displaying it again on page refresh
-unset($_SESSION['success_message']);
-}
-?>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+            <?php endif; ?>
+            <div class="profile-header">
+                <img src="<?php echo htmlspecialchars($user['profile_picture'] ?? 'uploads/default_profile_picture.jpg'); ?>" alt="Profile Picture" class="profile-picture">
+                <h1><?php echo htmlspecialchars($username); ?></h1>
+            </div>
+            <div class="profile-details">
+                <p><strong>Email:</strong> <?php echo htmlspecialchars($user['email']); ?></p>
+                <p><strong>First Name:</strong> <?php echo htmlspecialchars($user['first_name']); ?></p>
+                <p><strong>Last Name:</strong> <?php echo htmlspecialchars($user['last_name']); ?></p>
+            </div>
+            <div class="upload-section mt-4">
+                <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post" enctype="multipart/form-data" class="mt-3">
+                    <div class="mb-3">
+                        <label for="profile_picture" class="form-label">Edit Profile Picture:</label>
+                        <input type="file" class="form-control" id="profile_picture" name="profile_picture" accept=".jpg, .jpeg, .png, .gif" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+            </div>
+            <div class="table-responsive mt-4">
+                <form method="GET" action="user-profile.php">
+                    <div class="row mb-3">
+                        <div class="col-auto">
+                            <label for="items_per_page" class="form-label">Items per page:</label>
+                            <select name="items_per_page" id="items_per_page" class="form-select">
+                                <option value="5" <?php if ($items_per_page == 5) echo 'selected'; ?>>5</option>
+                                <option value="10" <?php if ($items_per_page == 10) echo 'selected'; ?>>10</option>
+                                <option value="20" <?php if ($items_per_page == 20) echo 'selected'; ?>>20</option>
+                                <option value="50" <?php if ($items_per_page == 50) echo 'selected'; ?>>50</option>
+                                <option value="custom" <?php if ($items_per_page == $custom_items_per_page) echo 'selected'; ?>>Custom</option>
+                            </select>
+                            <input type="number" name="custom_items_per_page" value="<?php echo $custom_items_per_page; ?>" class="form-control mt-2" placeholder="Enter custom number" min="1" max="1000" style="<?php echo $items_per_page != $custom_items_per_page ? 'display:none;' : ''; ?>">
+                        </div>
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-primary mt-4">Apply</button>
+                        </div>
+                    </div>
+                </form>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Event Name</th>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Location</th>
+                            
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($events as $event): ?>
+                            <tr>
+                                <td><a href="event-details-user.php?id=<?php echo $event['id']; ?>" class="event-link"><?php echo htmlspecialchars($event['name']); ?></a></td>
+                                <td><?php echo htmlspecialchars($event['date']); ?></td>
+                                <td><?php echo htmlspecialchars(truncateWords($event['description'], 10)); ?></td>
+                                <td><?php echo htmlspecialchars($event['location']); ?></td>
+                               
+                                <td class="action-buttons">
+                                    <!-- <a href="view-event.php?id=<?php echo $event['id']; ?>" class="btn btn-info">View</a> -->
+                                    <a href="invite-users.php?event_id=<?php echo $event['id']; ?>" class="btn btn-primary">Invite</a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <nav aria-label="Page navigation">
+                    <ul class="pagination">
+                        <?php if ($total_pages > 1): ?>
+                            <?php if ($offset > 0): ?>
+                                <li class="page-item"><a class="page-link" href="?page=<?php echo ($offset / $items_per_page); ?>">Previous</a></li>
+                            <?php endif; ?>
+                            <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                                <li class="page-item <?php if ($i == ($offset / $items_per_page) + 1) echo 'active'; ?>">
+                                    <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i; ?></a>
+                                </li>
+                            <?php endfor; ?>
+                            <?php if ($offset + $items_per_page < $total_events): ?>
+                                <li class="page-item"><a class="page-link" href="?page=<?php echo (($offset / $items_per_page) + 2); ?>">Next</a></li>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -9,7 +9,8 @@ if(isset($_GET['id'])) {
     
     if ($stmt->execute()) {
         // Event disapproved successfully
-        header("Location: events.php.php?id=$event_id");
+        header("Location: admin-readmore.php?id=" . $event_id);
+
         exit();
     } else {
         // Error occurred

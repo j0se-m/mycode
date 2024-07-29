@@ -19,15 +19,8 @@ $user_query->execute();
 $user_result = $user_query->get_result();
 $user = $user_result->fetch_assoc();
 
-// Fetch users for invite selection
-$users_query = $mysqli->query("SELECT id, username FROM crud WHERE id != {$user['id']}");
-$users = [];
-while ($row = $users_query->fetch_assoc()) {
-    $users[] = $row;
-}
-
 // Fetch user events
-$event_query = $mysqli->prepare("SELECT id, name, image, description, created_at, approved FROM events WHERE user_id = ?");
+$event_query = $mysqli->prepare("SELECT id, name, description, created_at, approved FROM events WHERE user_id = ?");
 $event_query->bind_param('i', $user['id']);
 $event_query->execute();
 $event_result = $event_query->get_result();
@@ -37,6 +30,23 @@ $events = [];
 if ($event_result !== false) {
     while ($event = $event_result->fetch_assoc()) {
         $events[] = $event;
+    }
+}
+
+// Fetch users for invite selection
+$users_query = $mysqli->query("SELECT id, username FROM crud WHERE id != {$user['id']}");
+$users = [];
+while ($row = $users_query->fetch_assoc()) {
+    $users[] = $row;
+}
+
+// Set the active event
+$active_event_id = isset($_GET['event_id']) ? (int)$_GET['event_id'] : (count($events) > 0 ? $events[0]['id'] : null);
+$active_event = null;
+foreach ($events as $event) {
+    if ($event['id'] == $active_event_id) {
+        $active_event = $event;
+        break;
     }
 }
 
@@ -79,6 +89,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['invite_button'])) {
         $invite_message = "No users selected for invitation.";
     }
 }
+
+// Fetch invited users for the active event
+$invited_users_query = $mysqli->prepare("SELECT c.username, ei.id AS invite_id FROM event_invites ei JOIN crud c ON ei.invited_user_id = c.id WHERE ei.event_id = ?");
+$invited_users_query->bind_param('i', $active_event_id);
+$invited_users_query->execute();
+$invited_users_result = $invited_users_query->get_result();
+
+// Initialize array to store invited users
+$invited_users = [];
+while ($invited_user = $invited_users_result->fetch_assoc()) {
+    $invited_users[] = [
+        'username' => htmlspecialchars($invited_user['username']),
+        'invite_id' => $invited_user['invite_id']
+    ];
+}
 ?>
 
 <!DOCTYPE html>
@@ -88,27 +113,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['invite_button'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Invite Users - Zetech University</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" integrity="sha512-J4U4hFUn9+XaKUMLRQKn8T8O8TQIXMwQ9WfBC5MlK27I7gSPhaX7lP3n/YIvF9vR9ZCHdfnt54bFdrPht3UE1A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
-        body {
-            background-color: #f8f9fa;
-        }
         .profile-header {
             text-align: center;
             margin: 20px 0;
             font-family: 'Roboto', sans-serif;
         }
-        .profile-picture {
-            border-radius: 50%;
-            width: 150px;
-            height: 150px;
-            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
-        }
         .card {
             border-radius: 15px;
-            overflow: hidden;
             box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
             transition: transform 0.3s ease;
-            width: 100%;
             margin-bottom: 20px;
         }
         .card:hover {
@@ -124,12 +139,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['invite_button'])) {
         }
         .card-text {
             color: #666;
-            overflow: hidden;
+            overflow: visible;
             text-overflow: ellipsis;
-            max-height: 120px; /* Limit the height of the description */
+            max-height: auto; /* Limit the height of the description */
         }
         .invite-form {
-            margin-top: 20px;
+            margin-top: 0px;
         }
         .invite-form select {
             width: 100%;
@@ -149,86 +164,226 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['invite_button'])) {
         .invite-form button:hover {
             background-color: #0056b3;
         }
-        .fade-out {
-            animation: fadeOut 2s forwards;
+        .sidebarr {
+            padding: 1rem;
+            margin-top: 20px;
+            margin-left: 200px;
+            background-color: #ffffff;
+            border-radius: 5px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+            max-height: 400px; /* Set maximum height for scrollability */
+            overflow-y: auto; /* Enable vertical scrolling */
         }
+        .main-content {
+            margin-top: 0px;
+        }
+
         @keyframes fadeOut {
-            0% { opacity: 1; }
-            100% { opacity: 0; display: none; }
+            0% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+            }
+        }
+        .container {
+            margin-top: 5px; /* Adjusted margin */
+        }
+
+        .invite-notification {
+            width: 700px;
+            margin: 0 auto;
+            text-align: center;
+            background-color: #CB6015; /* Changed background color */
+            border-color: #CB6015;
+            color: #333;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            animation: fadeOut 3s ease-in-out forwards;
+            position: relative; /* Ensure position relative for z-index */
+            z-index: 9999; /* Set a high z-index value */
+        }
+
+        /* Custom styles for invited users list */
+        .invited-users-list {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .invited-user {
+            display: flex;
+            align-items: center;
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            max-width: 300px;
+        }
+        .invited-user-name {
+            margin-left: 10px;
+        }
+        .cancel-invite-icon {
+            color: #dc3545; /* Bootstrap danger color */
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="profile-header">
-            <h1><?php echo htmlspecialchars($username); ?></h1>
+<div class="container">
+    <?php if (isset($invite_message)) : ?>
+        <div class="alert alert-warning invite-notification" role="alert">
+            <?php echo $invite_message; ?>
         </div>
-        <?php if (isset($invite_message)) : ?>
-            <div class="alert alert-warning fade-out" role="alert">
-                <?php echo $invite_message; ?>
+    <?php endif; ?>
+    <div class="row">
+        <div class="col-md-4">
+            <div class="sidebarr">
+                <h5 class="mt-4">Invite Users</h5>
+                <form method="post" class="invite-form">
+                    <input type="hidden" name="event_id" value="<?php echo $active_event_id; ?>">
+                    
+                    <!-- Search input for filtering users -->
+                    <div class="mb-3">
+                        <input type="text" class="form-control" id="searchUser" name="searchUser" placeholder="Search users...">
+                    </div>
+                    
+                    <!-- Select All checkbox -->
+                    <div class="mb-3 form-check">
+                        <input class="form-check-input" type="checkbox" id="selectAllUsers">
+                        <label class="form-check-label" for="selectAllUsers">Select All</label>
+                    </div>
+                    
+                    <div>
+                        <?php foreach ($users as $user): ?>
+                            <div class="form-check">
+                                <input class="form-check-input invite-user-checkbox" type="checkbox" name="invite_user_id[]" value="<?php echo $user['id']; ?>" id="user<?php echo $user['id']; ?>">
+                                <label class="form-check-label" for="user<?php echo $user['id']; ?>">
+                                    <?php echo htmlspecialchars($user['username']); ?>
+                                </label>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <button type="submit" name="invite_button" class="btn btn-primary">Invite</button>
+                </form>
             </div>
-        <?php endif; ?>
-        <div class="row">
-            <!-- Event Cards Section -->
-            <div class="col-md-8">
-                <?php foreach ($events as $event): ?>
-                    <?php
-                    $status = $event['approved'] == 1 ? '' : '(pending)';
-                    ?>
+        </div>
+        <div class="col-md-8">
+            <div class="main-content">
+                <?php if ($active_event): ?>
+                    <!-- Existing event card -->
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title"><?php echo htmlspecialchars($event['name']) . $status; ?></h5>
-                            <p class="card-text"><?php echo htmlspecialchars($event['description']); ?></p>
+                            <h5 class="card-title"><?php echo htmlspecialchars($active_event['name']); ?></h5>
+                            <p class="card-text"><?php echo htmlspecialchars($active_event['description']); ?></p>
                         </div>
                         <div class="card-footer">
-                            <small class="text-muted">Posted on <?php echo htmlspecialchars($event['created_at']); ?></small>
+                            <small class="text-muted">Posted on <?php echo htmlspecialchars($active_event['created_at']); ?></small>
                         </div>
-                        <?php if ($event['approved'] == 0): ?>
+                        <?php if ($active_event['approved'] == 0): ?>
                             <div class="card-footer">
                                 <a href="user-edit.php" class="btn btn-warning btn-sm">Edit</a>
-                                <a href="delete-event.php?id=<?php echo $event['id']; ?>" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this post?')">Delete</a>
+                                <a href="delete-event.php?id=<?php echo $active_event['id']; ?>" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this post?')">Delete</a>
                             </div>
                         <?php endif; ?>
                     </div>
-                <?php endforeach; ?>
-            </div>
-            
-            <!-- Invite Cards Section -->
-            <div class="col-md-4">
-                <?php foreach ($events as $event): ?>
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">Invite Users to <?php echo htmlspecialchars($event['name']); ?></h5>
-                            <form method="post" class="invite-form">
-                                <input type="hidden" name="event_id" value="<?php echo $event['id']; ?>">
-                                <div>
-                                    <?php foreach ($users as $user): ?>
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" name="invite_user_id[]" value="<?php echo $user['id']; ?>" id="user<?php echo $user['id']; ?>">
-                                            <label class="form-check-label" for="user<?php echo $user['id']; ?>">
-                                                <?php echo htmlspecialchars($user['username']); ?>
-                                            </label>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                                <button type="submit" name="invite_button">Invite</button>
-                            </form>
+
+                    <!-- Display invited users -->
+                    <?php if (!empty($invited_users)): ?>
+                        <div class="mt-4">
+                            <h5>Invited Users</h5>
+                            <div class="invited-users-list">
+                                <?php foreach ($invited_users as $invited_user): ?>
+                                    <div class="invited-user">
+                                        <i class="fas fa-times-circle cancel-invite-icon" data-invite-id="<?php echo $invited_user['invite_id']; ?>"></i>
+                                        <div class="invited-user-name"><?php echo $invited_user['username']; ?></div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
                         </div>
-                    </div>
-                <?php endforeach; ?>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <p>No event selected.</p>
+                <?php endif; ?>
             </div>
         </div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Fade out alert after 5 seconds
-        setTimeout(function() {
-            let alert = document.querySelector('.alert');
-            if (alert) {
-                alert.classList.add('fade-out');
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/js/all.min.js" integrity="sha512-SUG5c7QfoX75cLxeiETPTgDWlXunE9xg9I0E7R9sWW3gG4xDmEHZaW4Xo5PLOh4e+PGz9C2rJfJfLHrLh4kSYg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<script>
+    // Function to handle "Select All" checkbox
+    document.getElementById('selectAllUsers').addEventListener('change', function() {
+        var checkboxes = document.querySelectorAll('.invite-user-checkbox');
+        checkboxes.forEach(function(checkbox) {
+            // Check if the checkbox should be checked based on visibility
+            if (checkbox.closest('.form-check').style.display !== 'none') {
+                checkbox.checked = this.checked;
             }
-        }, 5000);
-    </script>
+        }, this); // Pass `this` to maintain correct context
+    });
+
+    // Function to filter users based on search input
+    document.getElementById('searchUser').addEventListener('input', function() {
+        var searchKeyword = this.value.trim().toLowerCase();
+        var checkboxes = document.querySelectorAll('.invite-user-checkbox');
+
+        checkboxes.forEach(function(checkbox) {
+            var label = checkbox.nextElementSibling.textContent.trim().toLowerCase();
+            if (label.includes(searchKeyword)) {
+                checkbox.parentElement.style.display = 'block';
+            } else {
+                checkbox.parentElement.style.display = 'none';
+            }
+        });
+
+        // Ensure "Select All" checkbox is unchecked when filtering changes
+        document.getElementById('selectAllUsers').checked = false;
+    });
+
+    // Ensure "Select All" checkbox state reflects dynamically checked checkboxes
+    document.querySelectorAll('.invite-user-checkbox').forEach(function(checkbox) {
+        checkbox.addEventListener('change', function() {
+            var allChecked = true;
+            document.querySelectorAll('.invite-user-checkbox').forEach(function(cb) {
+                if (!cb.checked) {
+                    allChecked = false;
+                }
+            });
+            document.getElementById('selectAllUsers').checked = allChecked;
+        });
+    });
+
+    // Cancel invite action
+    document.querySelectorAll('.cancel-invite-icon').forEach(function(icon) {
+        icon.addEventListener('click', function() {
+            var inviteId = this.getAttribute('data-invite-id');
+
+            // Perform AJAX request to cancel invite
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', 'cancel-invite.php', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    // Remove the canceled invite from the UI
+                    var invitedUserElement = icon.closest('.invited-user');
+                    invitedUserElement.remove();
+                }
+            };
+            xhr.send('invite_id=' + encodeURIComponent(inviteId));
+        });
+    });
+
+    // Automatically fade out invite notification after 3 seconds
+    var inviteNotification = document.querySelector('.invite-notification');
+    if (inviteNotification) {
+        setTimeout(function() {
+            inviteNotification.style.opacity = '0';
+        }, 3000); // 3000 milliseconds = 3 seconds
+    }
+</script>
+
 </body>
 </html>

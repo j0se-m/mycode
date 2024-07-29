@@ -1,28 +1,33 @@
 <?php
+// Include necessary files
+include 'config.php'; // Database connection
 session_start();
-include 'config.php';
 
-// Redirect to login page if user is not logged in
+// Check if user is logged in
 if (!isset($_SESSION['username'])) {
-    header("location: userLogin.php");
+    echo json_encode(['status' => 'error', 'message' => 'User not logged in']);
     exit();
 }
 
-// Database connection using $conn from config.php
-$mysqli = $conn;
+// Validate POST data
+if (isset($_POST['invite_id']) && $_POST['action'] === 'reject') {
+    $invite_id = intval($_POST['invite_id']);
+    $user_id = $_SESSION['user_id']; // Assuming user_id is stored in session
 
-// Handle reject action for event invite
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['invite_id'])) {
-    $invite_id = $_POST['invite_id'];
+    // Reject invite
+    $stmt = $mysqli->prepare("UPDATE event_invites SET status = 'rejected' WHERE id = ? AND invited_user_id = ?");
+    $stmt->bind_param('ii', $invite_id, $user_id);
 
-    // Update invite status to rejected
-    $status = 'rejected';
-    $update_query = $mysqli->prepare("UPDATE event_invites SET status = ? WHERE id = ?");
-    $update_query->bind_param('si', $status, $invite_id);
-    $update_query->execute();
+    if ($stmt->execute()) {
+        echo json_encode(['status' => 'success']);
+    } else {
+        echo json_encode(['status' => 'error', 'message' => 'Failed to reject invite']);
+    }
 
-    // Redirect to avoid form resubmission
-    header("Location: invite-display.php");
-    exit();
+    $stmt->close();
+} else {
+    echo json_encode(['status' => 'error', 'message' => 'Invalid request']);
 }
+
+$mysqli->close();
 ?>

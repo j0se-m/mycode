@@ -27,10 +27,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['event_id'])) {
     }
 
     $conn->close();
-    header("Location: event-requests.php");
+    header("Location: events-request-admin.php");
+    
     exit();
 } else {
-    header("Location: event-requests.php");
+    header("Location:events-request-admin.php");
     exit();
 }
 ?>

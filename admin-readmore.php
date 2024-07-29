@@ -1,9 +1,13 @@
 <?php
-require('config.php');
 include 'headerr.php';
 ?>
 
 <style>
+       .content {
+            padding: 20px;
+            margin-top: 6px; /* Adjusting for navbar height */
+            margin-left: 180px; /* Adjusting for sidebar width */
+        }
 </style>
 
 <?php
@@ -15,6 +19,9 @@ if(isset($_GET['id'])) {
     if ($result->num_rows > 0) {
         $event = $result->fetch_assoc();
         ?>
+        <div class="content">
+
+    
         <div class="container mt-5">
             <div class="row">
                 <div class="col-md-8">
@@ -74,6 +81,7 @@ if(isset($_GET['id'])) {
                 </div>
             </div>
         </div>
+        </div>
         <?php
     } else {
         echo "Event not found";
@@ -83,5 +91,4 @@ if(isset($_GET['id'])) {
 }
 
 $conn->close();
-include 'footer.php';
 ?>
